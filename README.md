@@ -2,26 +2,6 @@
 
 A fun Secret Santa-style game where friends pool ETH and are randomly assigned meme coins. The winner gets a 9% bonus!
 
-## ⚠️ Important: V1 Had Critical Bugs - Use V2 Only!
-
-**V1 had a fatal WETH wrapping bug that locked all funds permanently.** V2 is the fixed, production-ready version.
-
-See [V2_FIXES_AND_DEPLOYMENT.md](V2_FIXES_AND_DEPLOYMENT.md) for full details.
-
-## V2 Features
-
-- **Fixed WETH Swaps**: Properly wraps ETH to WETH before Uniswap swaps ✅
-- **All-or-Nothing Execution**: Any swap failure = full revert, no partial states ✅
-- **Refund Mechanism**: Get money back if swaps fail (24h after deadline) ✅
-- **Pool Cancellation**: Creator can cancel before deadline ✅
-- **Emergency Withdrawal**: Last resort recovery (7 days after unlock) ✅
-- **Slippage Protection**: Configurable tolerance (5-50%) ✅
-- **Executor Rewards**: 1% incentive for calling executeSwaps() ✅
-- **Winner Bonus**: Top performer gets 9% of total pool as ETH bonus ✅
-- **Leaderboard**: Track everyone's performance in real-time ✅
-- **Price Tracking**: Records entry and unlock prices via Uniswap V3 oracles ✅
-- **Base Network**: Deployed on Base for low fees and fast transactions ✅
-
 ## How It Works
 
 ### Phase 1: Join (Hidden Phase)
