@@ -1,0 +1,526 @@
+FRIENDS MEME POOL - FRONTEND SPECIFICATION
+==========================================
+
+CONTRACT INFORMATION
+--------------------
+Contract Address: 0x6eBCd0f5D4e06566aF8eD87F3c0a40233Ff84664
+Network: Base Mainnet
+Chain ID: 8453
+RPC URL: https://mainnet.base.org
+Block Explorer: https://basescan.org/address/0x6eBCd0f5D4e06566aF8eD87F3c0a40233Ff84664
+
+CONTRACT DESCRIPTION
+--------------------
+Friends Meme Pool is a Secret Santa-style meme coin lottery game. Players join pools with ETH, get randomly assigned meme tokens to buy, and compete to see whose token gains the most value. The winner gets a bonus reward!
+
+KEY FEATURES
+------------
+1. Create Pool - Set up a new meme coin competition
+2. Join Pool - Enter a pool by paying the entry fee
+3. Execute Swaps - Buy the meme tokens after join deadline (anyone can trigger, executor gets 1% reward)
+4. Track Progress - Monitor token prices and current standings
+5. Declare Winner - Record final prices and determine winner after unlock time
+6. Claim Rewards - Winners and participants claim their tokens/winnings
+7. Refunds - Get refunds if pool doesn't fill up (24h after join deadline)
+8. Emergency Withdraw - Creator can recover funds if needed (7 days after unlock)
+
+MAIN USER FLOWS
+---------------
+
+FLOW 1: CREATE POOL
+User inputs:
+- Pool name (string)
+- Whitelisted participants (array of addresses)
+- Entry amount (ETH amount per person)
+- Join deadline (Unix timestamp - when joining closes)
+- Unlock time (Unix timestamp - when winner can be determined, must be > join deadline)
+- Meme tokens (array of token addresses to buy)
+- Uniswap pool addresses (array of pool addresses for each token)
+- Winner bonus (in basis points, e.g., 9000 = 90%)
+
+Function to call: createPool(string,address[],uint256,uint256,uint256,address[],address[],uint256)
+
+Validation:
+- Must have same number of participants, tokens, and pools
+- Must have at least 2 participants
+- Unlock time must be after join deadline
+- Winner bonus must be 0-10000 (0-100%)
+
+FLOW 2: JOIN POOL
+User inputs:
+- Pool ID (uint256)
+- Must send exact entry amount in ETH
+
+Function to call: joinPool(uint256) - PAYABLE
+Send value: Pool's entry amount (check getPoolDetails first)
+
+Requirements:
+- Must be whitelisted participant
+- Cannot join twice
+- Must be before join deadline
+- Must send exact entry amount
+
+FLOW 3: VIEW POOL DETAILS
+Read-only function to display pool information:
+Function: getPoolDetails(uint256 poolId)
+
+Returns:
+- name (string)
+- creator (address)
+- entryAmount (uint256) - in wei
+- joinDeadline (uint256) - Unix timestamp
+- unlockTime (uint256) - Unix timestamp
+- winnerBonusBps (uint256) - basis points
+- participants (address[])
+- memeTokens (address[])
+- uniswapPools (address[])
+- participantCount (uint256)
+- totalParticipants (uint256)
+- hasJoined (address => bool mapping, query per participant)
+- swapsExecuted (bool)
+- winnerDeclared (bool)
+- winner (address)
+
+Display requirements:
+- Convert wei to ETH for entry amount (divide by 1e18)
+- Convert timestamps to readable dates
+- Show progress: X/Y participants joined
+- Show status: Open for Joining / Ready for Swaps / Swaps Executed / Winner Declared / Completed
+
+FLOW 4: EXECUTE SWAPS
+Anyone can trigger this after join deadline passes and all participants have joined.
+
+Function to call: executeSwaps(uint256 poolId)
+
+Requirements:
+- All participants must have joined
+- Must be after join deadline
+- Swaps not already executed
+
+Executor receives 1% of total pool funds as reward.
+
+FLOW 5: CHECK POOL STATUS & PRICES
+Read-only function to check current token prices:
+Function: getCurrentPrices(uint256 poolId)
+
+Returns array of current prices for each token in the pool.
+
+Show leaderboard:
+- For each participant, show their assigned token and current % gain
+- Calculate % gain: ((currentPrice - initialPrice) / initialPrice) * 100
+- Sort by highest % gain
+
+FLOW 6: DECLARE WINNER
+After unlock time, anyone can call this to finalize the competition.
+
+Function to call: recordPricesAndDeclareWinner(uint256 poolId)
+
+Requirements:
+- Must be after unlock time
+- Swaps must be executed
+- Winner not already declared
+
+FLOW 7: CLAIM REWARDS
+Participants and winner claim their tokens/winnings.
+
+Function to call: claim(uint256 poolId)
+
+Requirements:
+- Winner must be declared
+- User must be participant or winner
+- User hasn't claimed yet
+
+What user receives:
+- Winner: Their token amount + winner bonus (90% of pool in typical setup)
+- Other participants: Their token amount + small share of remaining 10%
+
+FLOW 8: REQUEST REFUND
+If pool doesn't fill or swaps fail, participants can get refunds after 24h past join deadline.
+
+Function to call: refund(uint256 poolId)
+
+Requirements:
+- At least 24 hours after join deadline
+- Swaps not executed OR swaps failed
+- User has joined
+- User hasn't been refunded
+
+User receives: Full entry amount back
+
+FLOW 9: EMERGENCY WITHDRAW (CREATOR ONLY)
+Pool creator can recover funds 7 days after unlock time if needed.
+
+Function to call: creatorEmergencyWithdraw(uint256 poolId)
+
+Requirements:
+- Must be pool creator
+- At least 7 days after unlock time
+- Not already withdrawn
+
+CONTRACT ABI FUNCTIONS
+-----------------------
+
+Write Functions (require wallet signature):
+1. createPool(string,address[],uint256,uint256,uint256,address[],address[],uint256)
+2. joinPool(uint256) - PAYABLE
+3. executeSwaps(uint256)
+4. recordPricesAndDeclareWinner(uint256)
+5. claim(uint256)
+6. refund(uint256)
+7. cancelPool(uint256) - Creator only, before any joins
+8. creatorEmergencyWithdraw(uint256) - Creator only
+9. testSwap(address,address,uint256) - View function to test if token/pool pair works
+10. testMultipleSwaps(address[],address[],uint256) - Batch test tokens
+
+Read Functions (no wallet needed):
+1. getPoolDetails(uint256) - Returns pool info
+2. getCurrentPrices(uint256) - Returns current token prices
+3. pools(uint256) - Returns pool struct
+4. poolCount() - Returns total number of pools
+5. getAssignedToken(uint256,address) - Returns which token assigned to participant
+6. getInitialPrice(uint256,address) - Returns initial price of token for participant
+7. getParticipantGain(uint256,address) - Returns % gain for participant
+
+SMART CONTRACT CONSTANTS
+-------------------------
+WETH Address (Base): 0x4200000000000000000000000000000000000006
+Uniswap V3 Router: 0x2626664c2603336E57B271c5C0b26F421741e481
+Uniswap V3 Factory: 0x33128a8fC17869897dcE68Ed026d694621f6FDfD
+
+Common Base Tokens for Testing:
+- USDC: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+- DAI: 0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb
+- cbBTC: 0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22
+
+FRONTEND UI COMPONENTS NEEDED
+------------------------------
+
+1. WALLET CONNECTION
+- Connect wallet button (MetaMask, WalletConnect, Coinbase Wallet)
+- Display connected address
+- Display ETH balance
+- Network switcher (ensure user is on Base Mainnet)
+
+2. POOLS DASHBOARD
+- List all pools (show pool ID, name, creator, status)
+- Filter by: All / My Pools / Active / Completed
+- Search by pool ID or name
+- Click pool to view details
+
+3. POOL DETAILS PAGE
+- Pool name and ID
+- Creator address
+- Entry amount (in ETH)
+- Join deadline (countdown timer if active)
+- Unlock time (countdown timer)
+- Winner bonus percentage
+- Participant list with join status (✓ joined, ✗ not joined)
+- Progress bar: X/Y participants joined
+- Pool status badge (Open, Ready, In Progress, Completed)
+- Action buttons (context-aware based on user role and pool state)
+
+4. CREATE POOL FORM
+Fields:
+- Pool Name (text input)
+- Entry Amount (number input in ETH)
+- Join Deadline (datetime picker)
+- Unlock Time (datetime picker)
+- Winner Bonus (slider 0-100%, default 90%)
+- Participants section:
+  - Add participant button
+  - Address inputs (minimum 2)
+  - Remove participant button
+- Tokens section:
+  - Add token button
+  - Token address input
+  - Uniswap pool address input (for this token/WETH pair)
+  - Test swap button (validate before creating)
+  - Remove token button
+
+Validation:
+- Same number of participants and tokens
+- Unlock time > Join deadline
+- All addresses valid
+- Entry amount > 0
+
+Test before create:
+- Run testMultipleSwaps() to verify all tokens will work
+- Show success/error for each token
+
+5. JOIN POOL BUTTON
+- Show entry amount required
+- Confirm transaction with entry amount
+- Disable if: already joined, deadline passed, not whitelisted, pool full
+
+6. LEADERBOARD (after swaps executed)
+Table columns:
+- Rank
+- Participant address (or ENS name)
+- Token assigned (symbol + address)
+- Initial price
+- Current price
+- % Gain (color-coded: green positive, red negative)
+- Status (Leading / Not Leading / Winner)
+
+Auto-refresh prices every 30 seconds
+
+7. EXECUTE SWAPS BUTTON
+- Show after join deadline + all participants joined
+- Display: "Execute swaps and earn 1% reward"
+- Disable if already executed
+
+8. DECLARE WINNER BUTTON
+- Show after unlock time
+- Disable if already declared
+
+9. CLAIM BUTTON
+- Show after winner declared
+- Display expected rewards (query contract first)
+- Show what user will receive
+- Disable if already claimed
+
+10. REFUND BUTTON
+- Show if eligible (24h after deadline, swaps not executed)
+- Display refund amount
+- Disable if already refunded
+
+11. ADMIN PANEL (for pool creator)
+- Cancel pool (before any joins)
+- Emergency withdraw (7 days after unlock)
+
+TECHNICAL REQUIREMENTS
+-----------------------
+
+Web3 Integration:
+- Use ethers.js or web3.js or viem
+- Contract ABI (see ABI section below)
+- Handle transaction errors gracefully
+- Show transaction pending/success/failure states
+- Display gas estimates before transactions
+
+Data Fetching:
+- Poll contract for pool updates
+- Cache pool data to reduce RPC calls
+- Use events to detect changes (PoolCreated, PlayerJoined, SwapsExecuted, WinnerDeclared)
+
+Events to listen for:
+- PoolCreated(uint256 indexed poolId, string name, address indexed creator, uint256 entryAmount)
+- PlayerJoined(uint256 indexed poolId, address indexed player)
+- SwapsExecuted(uint256 indexed poolId, address indexed executor)
+- WinnerDeclared(uint256 indexed poolId, address indexed winner, uint256 winningPercentage)
+- RewardClaimed(uint256 indexed poolId, address indexed player, uint256 amount)
+- PoolRefunded(uint256 indexed poolId, address indexed player, uint256 amount)
+
+User Experience:
+- Show loading states during transactions
+- Success/error toast notifications
+- Confirmation modals for important actions
+- Help tooltips explaining features
+- Mobile responsive design
+
+EXAMPLE USER JOURNEY
+--------------------
+
+SCENARIO: Alice creates a pool for 3 friends to compete
+
+1. Alice connects wallet
+2. Alice clicks "Create Pool"
+3. Alice fills form:
+   - Name: "Friends Meme Battle"
+   - Entry: 0.001 ETH
+   - Join deadline: 1 hour from now
+   - Unlock: 24 hours from now
+   - Bonus: 90%
+   - Participants: Bob, Charlie, Dave
+   - Tokens: USDC, DAI, cbBTC with their pool addresses
+4. Alice tests swaps (all pass ✓)
+5. Alice submits, transaction confirms
+6. Bob, Charlie, Dave each join the pool (0.001 ETH each)
+7. After 1 hour, anyone clicks "Execute Swaps"
+   - Executor gets 0.00003 ETH (1% of 0.003 ETH)
+   - Contract buys USDC, DAI, cbBTC randomly assigned
+8. Leaderboard shows real-time % gains for 24 hours
+9. After 24 hours, anyone clicks "Declare Winner"
+10. Winner (e.g., Bob) claims their token + 90% bonus
+11. Charlie and Dave claim their tokens + small share
+
+CONTRACT ABI (Key Functions)
+-----------------------------
+
+You'll need the full ABI from the compiled contract. Here are the key function signatures:
+
+function createPool(
+    string memory name,
+    address[] memory whitelistedParticipants,
+    uint256 entryAmount,
+    uint256 joinDeadline,
+    uint256 unlockTime,
+    address[] memory memeTokens,
+    address[] memory uniswapPools,
+    uint256 winnerBonusBps
+) external returns (uint256)
+
+function joinPool(uint256 poolId) external payable
+
+function executeSwaps(uint256 poolId) external
+
+function recordPricesAndDeclareWinner(uint256 poolId) external
+
+function claim(uint256 poolId) external
+
+function refund(uint256 poolId) external
+
+function getPoolDetails(uint256 poolId) external view returns (
+    string memory name,
+    address creator,
+    uint256 entryAmount,
+    uint256 joinDeadline,
+    uint256 unlockTime,
+    uint256 winnerBonusBps,
+    address[] memory participants,
+    address[] memory memeTokens,
+    address[] memory uniswapPools,
+    uint256 participantCount,
+    uint256 totalParticipants,
+    bool swapsExecuted,
+    bool winnerDeclared,
+    address winner
+)
+
+function getCurrentPrices(uint256 poolId) external view returns (uint256[] memory)
+
+function testSwap(
+    address tokenOut,
+    address poolAddress,
+    uint256 testAmount
+) external view returns (
+    bool success,
+    string memory errorMessage,
+    uint256 estimatedOutput
+)
+
+DESIGN SUGGESTIONS
+------------------
+
+Color Scheme:
+- Primary: Blue/Purple gradient (crypto vibe)
+- Success: Green
+- Error: Red
+- Warning: Yellow
+- Background: Dark mode preferred (easier on eyes)
+
+Typography:
+- Headings: Bold, modern sans-serif
+- Body: Clean, readable font
+- Monospace for addresses and numbers
+
+Components:
+- Card-based layout for pools
+- Glass morphism or gradient borders
+- Animated loading spinners
+- Confetti animation when winner is declared
+- Trophy icon for winner
+- Medal icons for leaderboard positions
+
+Icons:
+- Wallet icon for connect
+- Plus icon for create pool
+- Users icon for participants
+- Coins icon for entry amount
+- Clock icon for deadlines
+- Trophy icon for winner
+- Chart icon for leaderboard
+- Gift icon for Secret Santa theme
+
+NOTES FOR FRONTEND BUILDER
+---------------------------
+
+1. All monetary values from contract are in wei - convert to ETH for display
+2. All timestamps are Unix timestamps - convert to local time
+3. Basis points: 10000 = 100%, 9000 = 90%
+4. Always check user is on Base Mainnet (chain ID 8453)
+5. Handle transaction rejections gracefully
+6. Show gas estimates before transactions
+7. Refresh data after successful transactions
+8. Use event listeners for real-time updates
+9. Cache token symbols/names for better UX (use Uniswap API or token lists)
+10. Show transaction hash with Basescan link after transactions
+11. Display ENS names if available instead of addresses
+12. Add share functionality (share pool link with friends)
+13. Consider adding QR code for pool joining on mobile
+14. Add "Copy pool ID" and "Copy address" buttons
+15. Show total pool value (entry amount × participants)
+
+ERROR MESSAGES TO HANDLE
+-------------------------
+
+Common errors from contract:
+- "Not whitelisted" - User not in participant list
+- "Already joined" - User already joined this pool
+- "Wrong entry amount" - Sent ETH doesn't match required amount
+- "Join deadline passed" - Too late to join
+- "Not all participants joined" - Can't execute swaps yet
+- "Already executed" - Swaps already done
+- "Too early" - Trying to declare winner before unlock time
+- "Already claimed" - User already claimed rewards
+- "Nothing to claim" - User not eligible for rewards
+- "Refund not available yet" - Must wait 24h after deadline
+
+TESTING CHECKLIST
+-----------------
+
+Before launch, test:
+- [ ] Create pool with 2 participants
+- [ ] Create pool with 3+ participants
+- [ ] Join pool as whitelisted participant
+- [ ] Try to join as non-whitelisted (should fail)
+- [ ] Try to join twice (should fail)
+- [ ] Try to join with wrong amount (should fail)
+- [ ] Execute swaps after all join
+- [ ] View leaderboard with live prices
+- [ ] Declare winner after unlock
+- [ ] Winner claims rewards
+- [ ] Non-winner claims tokens
+- [ ] Refund flow (create pool, don't fill, wait 24h, refund)
+- [ ] Test on mobile devices
+- [ ] Test with different wallet providers
+
+ADDITIONAL FEATURES (OPTIONAL)
+-------------------------------
+
+- Pool chat/comments
+- Share pool on social media
+- Historical pool archive
+- User profiles with stats (pools created, won, participated)
+- Token price charts using TradingView or similar
+- Notifications (email/push) for pool events
+- Pool templates for quick creation
+- Multi-language support
+- Analytics dashboard (total volume, popular tokens, etc.)
+- Referral system
+- Pool password protection
+- Spectator mode (non-participants can watch)
+
+SUPPORT & DOCUMENTATION
+------------------------
+
+Include help section explaining:
+- What is Secret Santa Meme Pool?
+- How to connect wallet
+- How to get Base ETH
+- How pools work
+- How winner is determined
+- What happens if pool doesn't fill
+- Gas fees explanation
+- Security considerations
+- Smart contract address verification
+
+CONTRACT SOURCE CODE
+--------------------
+
+The contract source code is verified on Basescan at:
+https://basescan.org/address/0x6eBCd0f5D4e06566aF8eD87F3c0a40233Ff84664#code
+
+Users can verify the contract functions and read the code for transparency.
+
+END OF SPECIFICATION
